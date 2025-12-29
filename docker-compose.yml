@@ -1,0 +1,62 @@
+services:
+# PostgreSQL database for Airflow metadata
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow                # DB username
+      POSTGRES_PASSWORD: airflow            # DB password
+      POSTGRES_DB: airflow                  # DB name
+    ports:
+      - "5432:5432"                         # Expose DB port for local access
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # Persist DB DATA
+    restart: always                         # Restart container on failure
+
+  airflow-webserver:
+    build: .
+    image: apache/airflow:custom
+    depends_on:
+      - postgres                            # Ensure DB is up first
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'        # Disable default example DAGs
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'         # Pause DAGs on startup
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+      AIRFLOW_UID: 50000                           # UID to avoid permission issues
+    volumes:
+      - ./dags:/opt/airflow/dags                   # DAG definitions
+      - ./logs:/opt/airflow/logs                   # Airflow logs
+      - ./plugins:/opt/airflow/plugins             # Custom plugins (empty)
+      - ./looker_ecommerce_bigquery_elt_pipeline:/opt/airflow/looker_ecommerce_bigquery_elt_pipeline    # dbt project
+      - ./looker_ecommerce_bigquery_elt_pipeline/profiles.yml:/home/airflow/.dbt/profiles.yml  # dbt credentials (placeholder)
+    ports:
+      - "8080:8080"                               # Airflow web UI
+    command: webserver                            # Start webserver process
+    restart: always
+
+  airflow-scheduler:
+    build: .
+    image: apache/airflow:custom
+    depends_on:
+      - airflow-webserver                         # Ensure webserver is up
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+      AIRFLOW_UID: 50000
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./looker_ecommerce_bigquery_elt_pipeline:/opt/airflow/looker_ecommerce_bigquery_elt_pipeline
+      - ./looker_ecommerce_bigquery_elt_pipeline/profiles.yml:/home/airflow/.dbt/profiles.yml
+    command: scheduler                           # Start scheduler process
+    restart: always
+
+# Named volume to persist Postgres data
+volumes:
+  postgres_data:
